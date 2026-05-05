@@ -786,7 +786,7 @@ async function formatText() {
 
 async function summarizeText() {
   const text = currentText.trim();
-  if (!text || text.split(/\\s+/).length < 10) { showToast('Text too short to summarize.'); return; }
+  if (!text || text.split(/\s+/).length < 10) { showToast('Text too short to summarize.'); return; }
   document.getElementById('summarizeBtn').textContent = 'Summarizing...';
   document.getElementById('loadingOverlay').classList.add('show');
   document.getElementById('loadingText').textContent = 'Generating Summary...';
