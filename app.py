@@ -414,5 +414,48 @@ def export_srt():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ── Document Extraction ──
+@app.route('/extract_text', methods=['POST'])
+def extract_text():
+    try:
+        data = request.get_json()
+        if not data or 'file' not in data:
+            return jsonify({'success': False, 'error': 'No file received'})
+
+        file_base64 = data.get('file', '')
+        filename = data.get('filename', '').lower()
+        
+        if not file_base64:
+            return jsonify({'success': False, 'error': 'Empty file'})
+
+        file_bytes = base64.b64decode(file_base64)
+        file_io = io.BytesIO(file_bytes)
+        
+        extracted_text = ""
+        
+        if filename.endswith('.pdf'):
+            import PyPDF2
+            reader = PyPDF2.PdfReader(file_io)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text + "\n"
+        elif filename.endswith('.docx'):
+            from docx import Document as DocxDocument
+            doc = DocxDocument(file_io)
+            for para in doc.paragraphs:
+                extracted_text += para.text + "\n"
+        elif filename.endswith('.txt'):
+            extracted_text = file_bytes.decode('utf-8', errors='ignore')
+        else:
+            return jsonify({'success': False, 'error': 'Unsupported file format. Please upload .txt, .pdf, or .docx'})
+
+        if not extracted_text.strip():
+            return jsonify({'success': False, 'error': 'No readable text found in document'})
+            
+        return jsonify({'success': True, 'text': extracted_text.strip()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 if __name__ == '__main__':
     app.run(debug=True)

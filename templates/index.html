@@ -298,20 +298,39 @@ header p { color:var(--muted); font-size:13px; }
     </div>
   </div>
 
-  <!-- Upload Card -->
-  <div class="upload-card" id="uploadCard"
-       onclick="document.getElementById('fileInput').click()"
-       ondragover="dragOver(event)"
-       ondragleave="dragLeave(event)"
-       ondrop="dropFile(event)">
-    <div class="upload-icon">📁</div>
-    <div class="upload-text">Upload Audio File</div>
-    <div class="upload-sub">Drag & drop or click — supports .wav, .mp3, .ogg, .flac, .m4a</div>
-    <div class="upload-progress" id="uploadProgress">
-      <div class="progress-bar"><div class="progress-fill"></div></div>
-      <p style="font-size:12px;color:var(--muted);margin-top:8px" id="uploadStatusText">Processing audio...</p>
+  <!-- Upload Cards -->
+  <div class="lang-grid" style="margin-bottom:14px;">
+    <!-- Audio Upload Card -->
+    <div class="upload-card" id="uploadCard" style="margin-bottom:0; height:100%;"
+         onclick="document.getElementById('fileInput').click()"
+         ondragover="dragOver(event)"
+         ondragleave="dragLeave(event)"
+         ondrop="dropFile(event)">
+      <div class="upload-icon">🎵</div>
+      <div class="upload-text">Upload Audio</div>
+      <div class="upload-sub">.wav, .mp3, .m4a</div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="progress-bar"><div class="progress-fill"></div></div>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px" id="uploadStatusText">Processing audio...</p>
+      </div>
+      <input type="file" id="fileInput" accept="audio/*" onchange="handleFileUpload(this.files[0])">
     </div>
-    <input type="file" id="fileInput" accept="audio/*" onchange="handleFileUpload(this.files[0])">
+
+    <!-- Document Upload Card -->
+    <div class="upload-card" id="docUploadCard" style="margin-bottom:0; height:100%;"
+         onclick="document.getElementById('docInput').click()"
+         ondragover="dragOverDoc(event)"
+         ondragleave="dragLeaveDoc(event)"
+         ondrop="dropDocFile(event)">
+      <div class="upload-icon">📄</div>
+      <div class="upload-text">Upload Document</div>
+      <div class="upload-sub">.pdf, .docx, .txt</div>
+      <div class="upload-progress" id="docUploadProgress" style="display:none;margin-top:12px;">
+        <div class="progress-bar"><div class="progress-fill" style="background:linear-gradient(90deg,var(--teal),#a855f7)"></div></div>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px" id="docUploadStatusText">Extracting text...</p>
+      </div>
+      <input type="file" id="docInput" accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none" onchange="handleDocUpload(this.files[0])">
+    </div>
   </div>
 
   <!-- Output Card -->
@@ -870,6 +889,69 @@ function handleFileUpload(file) {
   reader.onerror = () => {
     document.getElementById('uploadProgress').style.display = 'none';
     showToast('Could not read file. Try again.');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Document Upload ──
+function dragOverDoc(e) {
+  e.preventDefault();
+  document.getElementById('docUploadCard').classList.add('dragover');
+}
+function dragLeaveDoc(e) {
+  document.getElementById('docUploadCard').classList.remove('dragover');
+}
+function dropDocFile(e) {
+  e.preventDefault();
+  document.getElementById('docUploadCard').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) handleDocUpload(file);
+}
+
+function handleDocUpload(file) {
+  if (!file) return;
+  const validExts = ['.pdf', '.txt', '.docx'];
+  const isMatch = validExts.some(ext => file.name.toLowerCase().endsWith(ext));
+  if (!isMatch) {
+    showToast('Please upload a .pdf, .txt, or .docx file');
+    return;
+  }
+
+  document.getElementById('docUploadProgress').style.display = 'block';
+  document.getElementById('docUploadStatusText').textContent = 'Extracting: ' + file.name;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    document.getElementById('docUploadStatusText').textContent = 'Reading document text...';
+
+    try {
+      const r = await fetch('/extract_text', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ file: base64, filename: file.name })
+      });
+      const d = await r.json();
+      document.getElementById('docUploadProgress').style.display = 'none';
+      document.getElementById('docInput').value = '';
+
+      if (d.success) {
+        currentText = d.text + ' ';
+        document.getElementById('resultBox').textContent = currentText;
+        document.getElementById('resultBox').classList.add('has-text');
+        updateStats(); detectLanguage(); checkTranslateBtn();
+        showToast('✅ Document text extracted!');
+      } else {
+        showToast('❌ ' + d.error);
+      }
+    } catch (err) {
+      document.getElementById('docUploadProgress').style.display = 'none';
+      showToast('Extraction error. Check connection.');
+    }
+  };
+  reader.onerror = () => {
+    document.getElementById('docUploadProgress').style.display = 'none';
+    showToast('Could not read file.');
   };
   reader.readAsDataURL(file);
 }
