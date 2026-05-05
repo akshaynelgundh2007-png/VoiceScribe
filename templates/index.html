@@ -326,6 +326,7 @@ header p { color:var(--muted); font-size:13px; }
           <button class="pill-btn" onclick="downloadTxt()">TXT</button>
           <button class="pill-btn" onclick="exportPDF()">PDF</button>
           <button class="pill-btn" onclick="exportWord()">Word</button>
+          <button class="pill-btn" onclick="exportSRT()">SRT</button>
           <button class="pill-btn" onclick="clearText()">Clear</button>
         </div>
       </div>
@@ -344,6 +345,16 @@ header p { color:var(--muted); font-size:13px; }
     <div class="detected-row" id="detectedRow" style="display:none">
       <span style="font-size:12px;color:var(--muted)">Detected language:</span>
       <span class="detected-badge" id="detectedLang">English</span>
+    </div>
+
+    <div class="action-row" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; margin-bottom:14px;">
+      <button class="action-btn" id="formatBtn" onclick="formatText()">✨ Smart Format</button>
+      <button class="action-btn" id="summarizeBtn" onclick="summarizeText()">📝 Summarize</button>
+    </div>
+
+    <div class="trans-box" id="summaryBox" style="display:none; margin-bottom:14px; background:linear-gradient(135deg,rgba(56,249,215,0.08),rgba(108,99,255,0.05)); border-color:rgba(56,249,215,0.2);">
+      <div class="trans-label" style="color:var(--teal)">Meeting Summary</div>
+      <div id="summaryText" style="white-space: pre-line;"></div>
     </div>
 
     <button class="translate-btn" id="translateBtn" onclick="translateText()">🌐 Translate Text</button>
@@ -713,12 +724,81 @@ async function exportWord() {
   }
 }
 
+async function exportSRT() {
+  if (!currentText.trim()) { showToast('Nothing to export! Speak something first.'); return; }
+  showToast('Generating Subtitles (SRT)...');
+  try {
+    const r = await fetch('/export_srt', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text: currentText.trim(), duration: recordDuration})
+    });
+    if (!r.ok) throw new Error('SRT export failed');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'voicescribe_subtitles.srt';
+    a.click();
+    showToast('✅ Subtitles downloaded!');
+  } catch (e) {
+    showToast('SRT export failed. Try again.');
+  }
+}
+
+async function formatText() {
+  const text = currentText.trim();
+  if (!text) { showToast('No text to format.'); return; }
+  document.getElementById('formatBtn').textContent = 'Formatting...';
+  try {
+    const r = await fetch('/format_text', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text})
+    });
+    const d = await r.json();
+    if (d.success) {
+      currentText = d.text;
+      document.getElementById('resultBox').textContent = currentText;
+      showToast('✨ Text formatted!');
+    }
+  } catch (e) {
+    showToast('Format error.');
+  }
+  document.getElementById('formatBtn').innerHTML = '✨ Smart Format';
+}
+
+async function summarizeText() {
+  const text = currentText.trim();
+  if (!text || text.split(/\\s+/).length < 10) { showToast('Text too short to summarize.'); return; }
+  document.getElementById('summarizeBtn').textContent = 'Summarizing...';
+  document.getElementById('loadingOverlay').classList.add('show');
+  document.getElementById('loadingText').textContent = 'Generating Summary...';
+  try {
+    const r = await fetch('/summarize', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text})
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById('summaryText').textContent = d.summary;
+      document.getElementById('summaryBox').style.display = 'block';
+      showToast('📝 Summary generated!');
+    } else {
+      showToast(d.error || 'Summary error.');
+    }
+  } catch (e) {
+    showToast('Summary error.');
+  }
+  document.getElementById('summarizeBtn').innerHTML = '📝 Summarize';
+  document.getElementById('loadingOverlay').classList.remove('show');
+}
+
 function clearText() {
   currentText = ''; translatedText = ''; recordDuration = 0;
   document.getElementById('resultBox').innerHTML =
     '<span class="text-placeholder">Your transcribed text will appear here as you speak...</span>';
   document.getElementById('resultBox').classList.remove('has-text');
   document.getElementById('transBox').classList.remove('show');
+  document.getElementById('summaryBox').style.display = 'none';
+  document.getElementById('summaryText').textContent = '';
   document.getElementById('translateBtn').style.display = 'none';
   document.getElementById('actionRow').style.display = 'none';
   document.getElementById('statsRow').style.display = 'none';

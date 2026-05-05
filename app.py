@@ -317,5 +317,100 @@ def transcribe_file():
     except Exception as e:
         return jsonify({'success': False, 'text': 'Error: ' + str(e)})
 
+# ── Summarize Text ──
+@app.route('/summarize', methods=['POST'])
+def summarize_text():
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        if not text or len(text.split()) < 10:
+            return jsonify({'success': False, 'error': 'Text is too short to summarize'})
+        
+        from sumy.parsers.plaintext import PlaintextParser
+        from sumy.nlp.tokenizers import Tokenizer
+        from sumy.summarizers.lsa import LsaSummarizer
+        
+        parser = PlaintextParser.from_string(text, Tokenizer("english"))
+        summarizer = LsaSummarizer()
+        summary = summarizer(parser.document, 3)
+        
+        summary_text = "• " + "\n• ".join([str(sentence) for sentence in summary])
+        return jsonify({'success': True, 'summary': summary_text})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ── Smart Format ──
+@app.route('/format_text', methods=['POST'])
+def format_text():
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        if not text:
+            return jsonify({'success': False, 'error': 'No text provided'})
+            
+        text = text.capitalize()
+        words = text.split()
+        formatted = []
+        for i, word in enumerate(words):
+            if word.lower() in ['and', 'but', 'because', 'however', 'therefore'] and i > 0 and len(formatted) > 0 and not formatted[-1].endswith(','):
+                formatted[-1] += ','
+            formatted.append(word)
+            
+        res = ' '.join(formatted)
+        if res and not res[-1] in ['.', '!', '?']:
+            res += '.'
+            
+        return jsonify({'success': True, 'text': res})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ── Export SRT ──
+@app.route('/export_srt', methods=['POST'])
+def export_srt():
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        duration = float(data.get('duration', 0))
+        
+        if not text:
+            return jsonify({'error': 'No text to export'}), 400
+            
+        words = text.split()
+        if duration == 0:
+            duration = len(words) / 2.5
+            
+        chunk_size = 7
+        chunks = [words[i:i + chunk_size] for i in range(0, len(words), chunk_size)]
+        
+        time_per_chunk = duration / len(chunks) if chunks else 0
+        
+        srt_content = ""
+        current_time = 0.0
+        
+        def format_time(seconds):
+            hours = int(seconds // 3600)
+            minutes = int((seconds % 3600) // 60)
+            secs = int(seconds % 60)
+            millis = int((seconds % 1) * 1000)
+            return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+            
+        for i, chunk in enumerate(chunks):
+            start_time = format_time(current_time)
+            end_time = format_time(current_time + time_per_chunk)
+            
+            srt_content += f"{i+1}\n"
+            srt_content += f"{start_time} --> {end_time}\n"
+            srt_content += " ".join(chunk) + "\n\n"
+            
+            current_time += time_per_chunk
+            
+        buf = io.BytesIO(srt_content.encode('utf-8'))
+        buf.seek(0)
+        return send_file(buf, mimetype='text/plain',
+                        as_attachment=True,
+                        download_name='voicescribe_subtitles.srt')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
